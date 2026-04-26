@@ -1,0 +1,379 @@
+INDIAN STOCK DASHBOARD - CODE AND SYSTEM FLOW EXPLANATION
+
+1. PROJECT OVERVIEW
+
+This project is now an Indian stock market learning dashboard.
+
+It includes:
+
+- NSE-style Indian stock symbols
+- INR / rupee formatting using "Rs."
+- Demo live price movement
+- Watchlist
+- Portfolio tracker
+- Paper trading simulator
+- Buy and sell practice orders
+- Price alerts
+- Market news-style learning cards
+
+The app is still intentionally lightweight:
+
+- index.html contains the frontend UI, styles, chart, and trading logic.
+- app.py serves the site and updates prices.
+- prices.json stores the latest current prices.
+
+
+2. TRACKED INDIAN STOCKS
+
+The current tracked symbols are:
+
+- RELIANCE: Reliance Industries Ltd.
+- TCS: Tata Consultancy Services Ltd.
+- INFY: Infosys Ltd.
+- HDFCBANK: HDFC Bank Ltd.
+- ICICIBANK: ICICI Bank Ltd.
+- SBIN: State Bank of India
+
+Example prices.json:
+
+{
+  "RELIANCE": 2935.40,
+  "TCS": 3820.25,
+  "INFY": 1488.60,
+  "HDFCBANK": 1712.35,
+  "ICICIBANK": 1128.90,
+  "SBIN": 771.45
+}
+
+
+3. SYSTEM FLOW
+
+Step 1: Start the app
+
+Command:
+
+  python app.py
+
+The backend starts:
+
+- A local web server at http://127.0.0.1:8000
+- A price update loop
+
+
+Step 2: Backend updates prices
+
+app.py keeps a prices dictionary for Indian stocks.
+
+In demo mode:
+
+- Prices move slightly every 1.5 seconds.
+- Updated prices are written to prices.json.
+
+If a live data provider is later connected:
+
+- The same prices.json flow can still be used.
+- The frontend does not need major changes.
+
+
+Step 3: Frontend reads prices
+
+index.html runs updatePrices().
+
+It fetches:
+
+  prices.json
+
+Then it updates:
+
+- Market cards
+- Selected stock price
+- Chart history
+- Portfolio value
+- Alerts
+- Paper trading account metrics
+
+
+Step 4: User interacts with the dashboard
+
+The user can:
+
+- Search/select Indian stocks
+- Add/remove watchlist symbols
+- Add manual holdings
+- Practice buy/sell trades
+- Create price alerts
+- Toggle light/dark theme
+- View sample Indian market news
+
+
+4. BACKEND CODE EXPLANATION - app.py
+
+SYMBOLS:
+
+  ["RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK", "SBIN"]
+
+This controls which Indian stocks are tracked.
+
+
+prices:
+
+Stores the latest price for each stock.
+
+
+save_prices():
+
+Writes the latest prices into prices.json.
+
+
+stream_demo_prices():
+
+Creates dummy market movement.
+
+It:
+
+- Loops forever
+- Slightly changes each stock price
+- Saves the new prices
+- Waits 1.5 seconds
+
+
+start_http():
+
+Starts the local dashboard server at:
+
+  http://127.0.0.1:8000
+
+
+main block:
+
+When app.py runs, it:
+
+- Creates prices.json
+- Starts the web server
+- Starts the price update loop
+
+
+5. FRONTEND CODE EXPLANATION - index.html
+
+The frontend has three main parts:
+
+- HTML layout
+- CSS design system
+- JavaScript app logic
+
+
+Main UI sections:
+
+- Sidebar navigation
+- Watchlist
+- Search bar
+- Market summary cards
+- Selected stock overview
+- Price chart
+- Portfolio tracker
+- Virtual market simulator
+- Order ticket
+- Price alerts
+- Allocation view
+- News section
+
+
+Important JavaScript objects:
+
+STOCKS:
+
+Stores Indian company metadata such as name, sector, open price, 52-week high/low, P/E, and dividend yield.
+
+
+DEFAULT_PRICES:
+
+Stores fallback Indian stock prices.
+
+
+NEWS:
+
+Stores sample Indian stock market news snippets.
+
+
+state:
+
+Stores all active dashboard data:
+
+- selected stock
+- chart range
+- theme
+- current prices
+- watchlist
+- holdings
+- starting cash
+- available cash
+- trade history
+- alerts
+- news filter
+
+
+localStorage:
+
+The app saves these values locally:
+
+- selectedSymbol
+- range
+- theme
+- watchlist
+- holdings
+- startingCash
+- cash
+- trades
+- alerts
+
+This means paper trading progress stays after refreshing the browser.
+
+
+6. PAPER TRADING FLOW
+
+The simulator starts with:
+
+  Rs. 10,00,000
+
+The user can place dummy buy/sell orders with no real money.
+
+
+Buy flow:
+
+User selects:
+
+- Symbol
+- Buy
+- Quantity
+
+Then executeTrade() checks:
+
+- Current market price
+- Required cash
+- Available virtual cash
+
+If valid:
+
+- Cash decreases
+- Holding quantity increases
+- Average buy price updates
+- Trade history records the order
+
+
+Sell flow:
+
+User selects:
+
+- Symbol
+- Sell
+- Quantity
+
+Then executeTrade() checks:
+
+- Current market price
+- Shares owned
+
+If valid:
+
+- Holding quantity decreases
+- Cash increases
+- Trade history records the order
+
+
+Account metrics:
+
+renderTrading() calculates:
+
+- Cash
+- Equity
+- Buying power
+- Total return
+
+Equity is:
+
+  available cash + current value of holdings
+
+
+7. PORTFOLIO FLOW
+
+Portfolio value is calculated from:
+
+  quantity owned * current price
+
+Gain/loss is calculated from:
+
+  current value - original cost
+
+Allocation bars show how much each stock contributes to total portfolio value.
+
+
+8. ALERT FLOW
+
+The user can create an alert like:
+
+  RELIANCE above Rs. 3000
+
+On every price update:
+
+- checkAlerts() compares current price with the target
+- If the condition is met, a toast notification appears
+
+
+9. DATA FLOW SUMMARY
+
+Backend flow:
+
+  demo price generator
+      -> app.py prices dictionary
+      -> prices.json
+
+Frontend flow:
+
+  prices.json
+      -> updatePrices()
+      -> applyPrices()
+      -> state.prices
+      -> render()
+      -> dashboard UI
+
+Paper trading flow:
+
+  order form
+      -> executeTrade()
+      -> cash and holdings update
+      -> trade history update
+      -> localStorage save
+      -> portfolio and simulator UI update
+
+
+10. HOW TO RUN
+
+From PowerShell:
+
+  cd d:\stock-dashboard
+  python app.py
+
+Then open:
+
+  http://127.0.0.1:8000
+
+Keep the PowerShell window open while using the dashboard.
+
+You can also run:
+
+  run_dashboard.ps1
+
+
+11. FUTURE IMPROVEMENTS
+
+Good next upgrades:
+
+- Connect a real Indian market data API
+- Add NIFTY 50 and SENSEX index cards
+- Add candlestick charts
+- Add brokerage/tax simulation
+- Add stop-loss and target orders
+- Add exportable trade journal
+- Add user login and database storage
+- Add historical performance analytics
+
