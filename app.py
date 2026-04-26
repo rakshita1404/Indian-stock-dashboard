@@ -72,8 +72,10 @@ async def fetch_prices():
 
 def start_http():
     handler = partial(SimpleHTTPRequestHandler, directory=str(Path(__file__).parent))
-    server = ThreadingHTTPServer(("127.0.0.1", 8000), handler)
-    print("Serving dashboard at http://127.0.0.1:8000", flush=True)
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", "8000"))
+    server = ThreadingHTTPServer((host, port), handler)
+    print(f"Serving dashboard at http://{host}:{port}", flush=True)
     server.serve_forever()
 
 
