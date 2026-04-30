@@ -537,6 +537,14 @@
       color: var(--primary);
     }
 
+    .read-more {
+      display: inline-block;
+      margin-top: 8px;
+      color: var(--primary);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
     .news-item strong,
     .alert-item strong {
       display: block;
@@ -966,6 +974,10 @@
         dateStyle: "medium",
         timeStyle: "short"
       });
+    };
+    const trimText = (value, limit = 220) => {
+      const text = String(value || "").replace(/\s+/g, " ").trim();
+      return text.length > limit ? `${text.slice(0, limit).trim()}...` : text;
     };
     const PAGE_CONFIG = {
       overview: {
@@ -1413,11 +1425,12 @@
       `;
       $("newsList").innerHTML = items.map((item) => {
         const published = formatDateTime(item.publishedAt);
-        const description = item.description || item.text || "Open the article for more details.";
+        const description = trimText(item.description || item.text || "Open the article for more details.");
         const content = `
           <strong>${item.symbol || "MARKET"}: ${item.title}</strong>
           <span>${description}</span>
           <span>${item.source || "Market source"} - ${published}</span>
+          ${item.url ? `<span class="read-more">Read full article</span>` : ""}
         `;
         return `<li class="news-item">${
           item.url
