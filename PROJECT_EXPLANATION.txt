@@ -15,6 +15,8 @@ It includes:
 - Buy and sell practice orders
 - Price alerts
 - Market news-style learning cards
+- Interactive news feed with refresh/status metadata
+- Page-based navigation so each workspace opens separately
 
 The app is still intentionally lightweight:
 
@@ -104,6 +106,8 @@ The user can:
 - Create price alerts
 - Toggle light/dark theme
 - View sample Indian market news
+- Move between Overview, Portfolio, Trading, Alerts, and News without scrolling through one long page
+- Refresh the news feed and see whether it is demo, fallback, offline, or live
 
 
 4. BACKEND CODE EXPLANATION - app.py
@@ -144,6 +148,23 @@ Starts the local dashboard server at:
   http://127.0.0.1:8000
 
 
+/api/news:
+
+Serves the dashboard news feed.
+
+If GNEWS_API_KEY is configured:
+
+- app.py fetches recent articles from GNews
+- The frontend receives article title, description, source, URL, and published time
+- The UI labels the feed as live
+
+If GNEWS_API_KEY is missing or the provider fails:
+
+- app.py returns an honest demo/fallback feed
+- The UI tells the user that the feed is demo or fallback
+- This avoids pretending static content is live
+
+
 main block:
 
 When app.py runs, it:
@@ -178,6 +199,36 @@ Main UI sections:
 - News section
 
 
+Page navigation:
+
+The sidebar uses clickable workspace buttons.
+
+Each button opens one focused page:
+
+- Overview: market cards, selected stock price, chart, and stock stats
+- Portfolio: holdings form and portfolio table
+- Trading: virtual simulator, order ticket, and allocation view
+- Alerts: price alert form and alert list
+- News: Indian stock market news cards
+
+This avoids showing every section on one long page.
+The user sees only the content related to the selected workspace.
+
+
+News interaction:
+
+The News page now has:
+
+- All / Selected filters
+- Refresh button
+- Source/status badge
+- Last updated time
+- Provider message
+- Clickable article links when live provider URLs are available
+
+The selected filter fetches news for the currently selected stock.
+
+
 Important JavaScript objects:
 
 STOCKS:
@@ -202,6 +253,7 @@ Stores all active dashboard data:
 - selected stock
 - chart range
 - theme
+- active page
 - current prices
 - watchlist
 - holdings
@@ -319,7 +371,36 @@ On every price update:
 - If the condition is met, a toast notification appears
 
 
-9. DATA FLOW SUMMARY
+9. NEWS FLOW
+
+The frontend calls:
+
+  /api/news?symbol=all
+
+or:
+
+  /api/news?symbol=RELIANCE
+
+Backend behavior:
+
+  GNEWS_API_KEY available
+      -> fetch recent GNews articles
+      -> return live feed
+
+  GNEWS_API_KEY missing
+      -> return demo feed
+      -> show transparent demo message
+
+  GNews request fails
+      -> return fallback feed
+      -> show fallback message
+
+On Render, add this environment variable to enable live news:
+
+  GNEWS_API_KEY = your_gnews_key
+
+
+10. DATA FLOW SUMMARY
 
 Backend flow:
 
@@ -346,7 +427,7 @@ Paper trading flow:
       -> portfolio and simulator UI update
 
 
-10. HOW TO RUN
+11. HOW TO RUN
 
 From PowerShell:
 
@@ -364,7 +445,7 @@ You can also run:
   run_dashboard.ps1
 
 
-11. FUTURE IMPROVEMENTS
+12. FUTURE IMPROVEMENTS
 
 Good next upgrades:
 
@@ -376,4 +457,3 @@ Good next upgrades:
 - Add exportable trade journal
 - Add user login and database storage
 - Add historical performance analytics
-

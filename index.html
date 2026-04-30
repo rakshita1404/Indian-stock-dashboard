@@ -144,7 +144,7 @@
 
     .topbar {
       display: grid;
-      grid-template-columns: minmax(220px, 480px) 1fr auto auto;
+      grid-template-columns: minmax(220px, 480px) auto 1fr auto auto;
       align-items: center;
       gap: 14px;
       margin-bottom: 22px;
@@ -198,6 +198,47 @@
       text-align: center;
     }
 
+    .mode-toggle {
+      display: flex;
+      min-height: 38px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+    }
+
+    .mode-button {
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      padding: 9px 12px;
+      white-space: nowrap;
+    }
+
+    .mode-button.active {
+      background: var(--primary);
+      color: #fff;
+      font-weight: 700;
+    }
+
+    .mode-note {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .is-disabled {
+      opacity: 0.55;
+    }
+
+    .form-grid :disabled,
+    .ghost-button:disabled,
+    .primary-button:disabled {
+      cursor: not-allowed;
+      opacity: 0.58;
+    }
+
     .icon-button {
       width: 42px;
       padding: 0;
@@ -226,11 +267,23 @@
       align-items: start;
     }
 
+    .dashboard-grid.single-column {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
     .content-stack,
     .side-stack {
       display: grid;
       gap: 18px;
       min-width: 0;
+    }
+
+    .content-stack > [hidden],
+    .side-stack > [hidden],
+    #marketCards[hidden],
+    #contentStack[hidden],
+    .side-stack[hidden] {
+      display: none;
     }
 
     .metric-grid {
@@ -449,12 +502,39 @@
       list-style: none;
     }
 
+    .news-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .news-badge {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--bg);
+      padding: 5px 9px;
+      font-weight: 700;
+    }
+
     .news-item,
     .alert-item {
       border: 1px solid var(--line);
       border-radius: var(--radius);
       padding: 12px;
       background: var(--bg);
+    }
+
+    .news-link {
+      display: block;
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .news-link:hover strong {
+      color: var(--primary);
     }
 
     .news-item strong,
@@ -554,6 +634,10 @@
         display: none;
       }
 
+      .mode-toggle {
+        grid-column: 1 / -1;
+      }
+
       .metric-grid,
       .account-grid,
       .stats-grid,
@@ -626,6 +710,10 @@
           <datalist id="symbolOptions"></datalist>
           <span class="search-symbol" id="searchSymbol">RELIANCE</span>
         </div>
+        <div class="mode-toggle" aria-label="Dashboard mode">
+          <button class="mode-button" id="liveModeBtn" type="button">Live View</button>
+          <button class="mode-button" id="practiceModeBtn" type="button">Practice</button>
+        </div>
         <div class="status-pill" id="marketStatus">Market live</div>
         <button class="icon-button" id="themeToggle" title="Toggle theme" aria-label="Toggle theme">◐</button>
         <button class="primary-button" id="watchToggle">Add to Watchlist</button>
@@ -633,8 +721,8 @@
 
       <section class="metric-grid" id="marketCards"></section>
 
-      <div class="dashboard-grid" style="margin-top: 18px;">
-        <div class="content-stack">
+      <div class="dashboard-grid" id="dashboardGrid" style="margin-top: 18px;">
+        <div class="content-stack" id="contentStack">
           <section class="card" id="overview">
             <div class="stock-header">
               <div>
@@ -735,14 +823,16 @@
               <div class="toolbar-row">
                 <button class="ghost-button active" data-news-filter="all">All</button>
                 <button class="ghost-button" data-news-filter="selected">Selected</button>
+                <button class="ghost-button" id="refreshNews" type="button">Refresh</button>
               </div>
             </div>
+            <div class="news-meta" id="newsMeta"></div>
             <ul class="news-list" id="newsList"></ul>
           </section>
         </div>
 
-        <aside class="side-stack">
-          <section class="panel card">
+        <aside class="side-stack" id="sideStack">
+          <section class="panel card" id="sideWatchlist">
             <div class="panel-header">
               <div>
                 <div class="panel-kicker">Sort</div>
@@ -776,7 +866,7 @@
             <ul class="alert-list" id="alertList"></ul>
           </section>
 
-          <section class="panel card">
+          <section class="panel card" id="orderTicket">
             <div class="panel-header">
               <div>
                 <div class="panel-kicker">Practice</div>
@@ -793,9 +883,10 @@
               <button class="primary-button" type="submit">Place Order</button>
             </form>
             <div class="empty" id="orderPreview">Select a stock and quantity to preview the order.</div>
+            <div class="mode-note" id="modeNote"></div>
           </section>
 
-          <section class="panel card">
+          <section class="panel card" id="allocationPanel">
             <div class="panel-header">
               <div>
                 <div class="panel-kicker">Mix</div>
@@ -836,6 +927,9 @@
       selected: STOCKS[localStorage.getItem("selectedSymbol")] ? localStorage.getItem("selectedSymbol") : "RELIANCE",
       range: localStorage.getItem("range") || "1D",
       theme: localStorage.getItem("theme") || "light",
+      page: localStorage.getItem("activePage") || "overview",
+      mode: localStorage.getItem("dashboardMode") || "practice",
+      dataStatus: "Demo stream",
       prices: { ...DEFAULT_PRICES },
       previous: {},
       history: {},
@@ -849,12 +943,57 @@
       trades: load("trades", []),
       alerts: load("alerts", []),
       newsFilter: "all",
+      newsArticles: NEWS.map((item) => ({
+        ...item,
+        description: item.text,
+        source: "StockDesk Demo",
+        publishedAt: new Date().toISOString(),
+        url: "",
+        isDemo: true
+      })),
+      newsStatus: "demo",
+      newsMessage: "Demo feed",
+      newsUpdatedAt: "",
       triggered: new Set()
     };
 
     const $ = (id) => document.getElementById(id);
     const money = (value) => `Rs. ${Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     const percent = (value) => `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
+    const formatDateTime = (value) => {
+      if (!value) return "Not updated yet";
+      return new Date(value).toLocaleString("en-IN", {
+        dateStyle: "medium",
+        timeStyle: "short"
+      });
+    };
+    const PAGE_CONFIG = {
+      overview: {
+        market: true,
+        content: ["overview"],
+        side: []
+      },
+      portfolio: {
+        market: false,
+        content: ["portfolio"],
+        side: []
+      },
+      trading: {
+        market: false,
+        content: ["trading"],
+        side: ["orderTicket", "allocationPanel"]
+      },
+      alerts: {
+        market: false,
+        content: [],
+        side: ["alerts"]
+      },
+      news: {
+        market: false,
+        content: ["news"],
+        side: []
+      }
+    };
 
     function load(key, fallback) {
       try {
@@ -929,6 +1068,7 @@
       localStorage.setItem("selectedSymbol", symbol);
       $("searchInput").value = `${symbol} - ${STOCKS[symbol].name}`;
       if ($("tradeSymbol")) $("tradeSymbol").value = symbol;
+      if (state.newsFilter === "selected" && $("refreshNews")) fetchNews();
       render();
     }
 
@@ -938,14 +1078,14 @@
         if (!response.ok) throw new Error("Unable to fetch prices");
         const data = await response.json();
         applyPrices(data);
-        $("marketStatus").textContent = "Market live";
+        state.dataStatus = "Demo stream";
       } catch {
         const simulated = Object.fromEntries(Object.entries(state.prices).map(([symbol, price]) => {
           const movement = Math.sin(Date.now() / 12000 + symbol.charCodeAt(0)) * price * 0.0018;
           return [symbol, Number((price + movement).toFixed(2))];
         }));
         applyPrices(simulated);
-        $("marketStatus").textContent = "Demo stream";
+        state.dataStatus = "Browser demo";
       }
     }
 
@@ -1215,6 +1355,11 @@
       const total = price * qty;
       const owned = state.holdings.find((holding) => holding.symbol === symbol)?.qty || 0;
 
+      if (state.mode === "live") {
+        $("orderPreview").textContent = "Live View is read-only. Switch to Practice Mode to use virtual buy/sell orders.";
+        return;
+      }
+
       if (!qty) {
         $("orderPreview").textContent = `${symbol} is trading at ${money(price)}. You own ${owned} shares.`;
         return;
@@ -1235,14 +1380,107 @@
       }).join("") || `<li class="empty">No active alerts.</li>`;
     }
 
+    async function fetchNews() {
+      const symbol = state.newsFilter === "selected" ? state.selected : "all";
+      $("refreshNews").disabled = true;
+      $("refreshNews").textContent = "Refreshing";
+      try {
+        const response = await fetch(`/api/news?symbol=${encodeURIComponent(symbol)}&ts=${Date.now()}`, { cache: "no-store" });
+        if (!response.ok) throw new Error("News request failed");
+        const data = await response.json();
+        state.newsArticles = data.articles || [];
+        state.newsStatus = data.status || "demo";
+        state.newsMessage = data.message || "";
+        state.newsUpdatedAt = data.lastUpdated || new Date().toISOString();
+      } catch (error) {
+        state.newsStatus = "offline";
+        state.newsMessage = "News service is offline. Showing saved demo updates.";
+        state.newsUpdatedAt = new Date().toISOString();
+      } finally {
+        $("refreshNews").disabled = false;
+        $("refreshNews").textContent = "Refresh";
+        renderNews();
+      }
+    }
+
     function renderNews() {
-      const items = state.newsFilter === "selected" ? NEWS.filter((item) => item.symbol === state.selected) : NEWS;
-      $("newsList").innerHTML = items.map((item) => `
-        <li class="news-item">
-          <strong>${item.symbol}: ${item.title}</strong>
-          <span>${item.text}</span>
-        </li>
-      `).join("");
+      const items = state.newsArticles;
+      const statusLabel = state.newsStatus === "live" ? "Live news" : state.newsStatus === "fallback" ? "Fallback" : state.newsStatus === "offline" ? "Offline" : "Demo news";
+      $("newsMeta").innerHTML = `
+        <span class="news-badge">${statusLabel}</span>
+        <span>Updated: ${formatDateTime(state.newsUpdatedAt)}</span>
+        <span>${state.newsMessage}</span>
+      `;
+      $("newsList").innerHTML = items.map((item) => {
+        const published = formatDateTime(item.publishedAt);
+        const description = item.description || item.text || "Open the article for more details.";
+        const content = `
+          <strong>${item.symbol || "MARKET"}: ${item.title}</strong>
+          <span>${description}</span>
+          <span>${item.source || "Market source"} - ${published}</span>
+        `;
+        return `<li class="news-item">${
+          item.url
+            ? `<a class="news-link" href="${item.url}" target="_blank" rel="noopener noreferrer">${content}</a>`
+            : content
+        }</li>`;
+      }).join("") || `<li class="empty">No news available for this filter.</li>`;
+    }
+
+    function setPage(page) {
+      state.page = PAGE_CONFIG[page] ? page : "overview";
+      localStorage.setItem("activePage", state.page);
+      applyPageVisibility();
+    }
+
+    function setMode(mode) {
+      state.mode = mode === "live" ? "live" : "practice";
+      localStorage.setItem("dashboardMode", state.mode);
+      applyMode();
+      renderTrading();
+    }
+
+    function applyMode() {
+      const isPractice = state.mode === "practice";
+      $("liveModeBtn").classList.toggle("active", !isPractice);
+      $("practiceModeBtn").classList.toggle("active", isPractice);
+      $("marketStatus").textContent = isPractice ? "Practice Mode" : "Live View";
+
+      ["tradeSymbol", "tradeSide", "tradeQty"].forEach((id) => {
+        $(id).disabled = !isPractice;
+      });
+      $("tradeForm").querySelector("button").disabled = !isPractice;
+      $("resetSimulator").disabled = !isPractice;
+      $("orderTicket").classList.toggle("is-disabled", !isPractice);
+      $("modeNote").textContent = isPractice
+        ? "Practice Mode uses simulated prices for learning. Buy/sell orders use virtual money only."
+        : "Live View is read-only. Practice buying, selling, and reset controls are frozen in this mode.";
+      updateOrderPreview();
+    }
+
+    function applyPageVisibility() {
+      const config = PAGE_CONFIG[state.page] || PAGE_CONFIG.overview;
+      const contentIds = ["overview", "portfolio", "trading", "news"];
+      const sideIds = ["sideWatchlist", "alerts", "orderTicket", "allocationPanel"];
+
+      $("marketCards").hidden = !config.market;
+      contentIds.forEach((id) => {
+        $(id).hidden = !config.content.includes(id);
+      });
+      sideIds.forEach((id) => {
+        $(id).hidden = !config.side.includes(id);
+      });
+
+      $("contentStack").hidden = config.content.length === 0;
+      $("sideStack").hidden = config.side.length === 0;
+      $("dashboardGrid").classList.toggle("single-column", config.side.length === 0 || config.content.length === 0);
+      document.querySelectorAll("[data-section]").forEach((button) => {
+        button.classList.toggle("active", button.dataset.section === state.page);
+      });
+
+      if (state.page === "overview") {
+        requestAnimationFrame(drawChart);
+      }
     }
 
     function checkAlerts() {
@@ -1279,6 +1517,8 @@
       renderTrading();
       renderAlerts();
       renderNews();
+      applyPageVisibility();
+      applyMode();
     }
 
     function bindEvents() {
@@ -1311,6 +1551,9 @@
       });
 
       $("watchSort").addEventListener("change", renderWatchlists);
+
+      $("liveModeBtn").addEventListener("click", () => setMode("live"));
+      $("practiceModeBtn").addEventListener("click", () => setMode("practice"));
 
       $("holdingForm").addEventListener("submit", (event) => {
         event.preventDefault();
@@ -1369,15 +1612,16 @@
         button.addEventListener("click", () => {
           state.newsFilter = button.dataset.newsFilter;
           document.querySelectorAll("[data-news-filter]").forEach((item) => item.classList.toggle("active", item === button));
-          renderNews();
+          fetchNews();
         });
       });
 
+      $("refreshNews").addEventListener("click", fetchNews);
+
       document.querySelectorAll("[data-section]").forEach((button) => {
         button.addEventListener("click", () => {
-          document.querySelectorAll("[data-section]").forEach((item) => item.classList.toggle("active", item === button));
-          const section = $(button.dataset.section);
-          if (section) section.scrollIntoView({ behavior: "smooth", block: "start" });
+          setPage(button.dataset.section);
+          window.scrollTo({ top: 0, behavior: "smooth" });
         });
       });
 
@@ -1389,6 +1633,7 @@
     bindEvents();
     Object.keys(STOCKS).forEach(seedHistory);
     setSelected(state.selected);
+    fetchNews();
     updatePrices();
     setInterval(updatePrices, 1500);
   </script>
