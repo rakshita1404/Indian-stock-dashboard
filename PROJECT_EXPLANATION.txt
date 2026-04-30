@@ -8,7 +8,8 @@ It includes:
 
 - NSE-style Indian stock symbols
 - INR / rupee formatting using "Rs."
-- Demo live price movement
+- Live View price route for delayed internet quote data
+- Practice Mode simulated price movement
 - Watchlist
 - Portfolio tracker
 - Paper trading simulator
@@ -66,24 +67,30 @@ Step 2: Backend updates prices
 
 app.py keeps a prices dictionary for Indian stocks.
 
-In demo mode:
+In Practice Mode:
 
 - Prices move slightly every 1.5 seconds.
 - Updated prices are written to prices.json.
 
-If a live data provider is later connected:
+In Live View:
 
-- The same prices.json flow can still be used.
-- The frontend does not need major changes.
+- The frontend calls /api/prices?mode=live.
+- app.py tries to fetch delayed NSE quote data from the internet.
+- The response includes price source, last updated time, delay metadata, and provider message.
+- Practice trading controls stay disabled.
 
 
 Step 3: Frontend reads prices
 
 index.html runs updatePrices().
 
-It fetches:
+In Practice Mode, it fetches:
 
-  prices.json
+  /api/prices?mode=practice
+
+In Live View, it fetches:
+
+  /api/prices?mode=live
 
 Then it updates:
 
@@ -93,6 +100,7 @@ Then it updates:
 - Portfolio value
 - Alerts
 - Paper trading account metrics
+- Source and last-updated labels
 
 
 Step 4: User interacts with the dashboard
@@ -163,6 +171,59 @@ If GNEWS_API_KEY is missing or the provider fails:
 - app.py returns an honest demo/fallback feed
 - The UI tells the user that the feed is demo or fallback
 - This avoids pretending static content is live
+
+
+/api/prices:
+
+Serves price data based on selected mode.
+
+Practice route:
+
+  /api/prices?mode=practice
+
+Returns simulated prices from the local backend.
+
+Live route:
+
+  /api/prices?mode=live
+
+Attempts providers in this order:
+
+1. Twelve Data, if TWELVE_DATA_API_KEY exists
+2. Yahoo Finance delayed quotes as fallback
+3. Local cached/simulated prices as transparent fallback
+
+Yahoo fallback symbols:
+
+- RELIANCE.NS
+- TCS.NS
+- INFY.NS
+- HDFCBANK.NS
+- ICICIBANK.NS
+- SBIN.NS
+
+The Twelve Data request format uses NSE symbols such as:
+
+  RELIANCE:NSE
+  TCS:NSE
+  INFY:NSE
+
+The live response includes:
+
+- status
+- source
+- lastUpdated
+- message
+- prices
+- per-symbol metadata such as delay, exchange, and market state
+
+If live fetching fails, the route returns a transparent fallback message.
+
+On Render, add this environment variable to enable Twelve Data:
+
+  TWELVE_DATA_API_KEY = your_twelve_data_key
+
+Note: NSE availability depends on the Twelve Data plan. Some free/trial access may be delayed, end-of-day, or limited to selected trial symbols.
 
 
 main block:
@@ -289,6 +350,9 @@ The simulator starts with:
 
 The user can place dummy buy/sell orders with no real money.
 
+Practice controls are enabled only in Practice Mode.
+In Live View, the simulator becomes read-only so users do not confuse real/delayed prices with virtual trading actions.
+
 
 Buy flow:
 
@@ -404,14 +468,22 @@ On Render, add this environment variable to enable live news:
 
 Backend flow:
 
-  demo price generator
+  practice mode
+      -> demo price generator
       -> app.py prices dictionary
       -> prices.json
 
+  live view
+      -> /api/prices?mode=live
+      -> internet quote provider
+      -> source/delay metadata
+      -> frontend UI
+
 Frontend flow:
 
-  prices.json
+  selected mode
       -> updatePrices()
+      -> /api/prices
       -> applyPrices()
       -> state.prices
       -> render()

@@ -938,6 +938,10 @@
       page: localStorage.getItem("activePage") || "overview",
       mode: localStorage.getItem("dashboardMode") || "practice",
       dataStatus: "Demo stream",
+      priceSource: "StockDesk Simulator",
+      priceUpdatedAt: "",
+      priceMessage: "Practice Mode uses simulated prices.",
+      priceMeta: {},
       prices: { ...DEFAULT_PRICES },
       previous: {},
       history: {},
@@ -1086,18 +1090,26 @@
 
     async function updatePrices() {
       try {
-        const response = await fetch(`prices.json?ts=${Date.now()}`, { cache: "no-store" });
+        const response = await fetch(`/api/prices?mode=${state.mode}&ts=${Date.now()}`, { cache: "no-store" });
         if (!response.ok) throw new Error("Unable to fetch prices");
         const data = await response.json();
-        applyPrices(data);
-        state.dataStatus = "Demo stream";
+        state.dataStatus = data.status || (state.mode === "live" ? "live" : "simulated");
+        state.priceSource = data.source || "Unknown source";
+        state.priceUpdatedAt = data.lastUpdated || new Date().toISOString();
+        state.priceMessage = data.message || "";
+        state.priceMeta = data.meta || {};
+        applyPrices(data.prices || data);
       } catch {
         const simulated = Object.fromEntries(Object.entries(state.prices).map(([symbol, price]) => {
           const movement = Math.sin(Date.now() / 12000 + symbol.charCodeAt(0)) * price * 0.0018;
           return [symbol, Number((price + movement).toFixed(2))];
         }));
+        state.dataStatus = "offline";
+        state.priceSource = "Browser fallback simulator";
+        state.priceUpdatedAt = new Date().toISOString();
+        state.priceMessage = "Backend price route is offline. Showing browser-generated practice prices.";
+        state.priceMeta = {};
         applyPrices(simulated);
-        state.dataStatus = "Browser demo";
       }
     }
 
@@ -1174,7 +1186,9 @@
         ["P/E", stock.pe],
         ["Dividend", stock.dividend],
         ["Volume", `${Math.round(price * 18500).toLocaleString()}`],
-        ["Range", state.range]
+        ["Range", state.range],
+        ["Source", state.mode === "live" ? state.priceSource : "Simulator"],
+        ["Updated", formatDateTime(state.priceUpdatedAt)]
       ].map(([label, value]) => `<div class="stat"><span>${label}</span><strong>${value}</strong></div>`).join("");
       drawChart();
     }
@@ -1451,13 +1465,17 @@
       localStorage.setItem("dashboardMode", state.mode);
       applyMode();
       renderTrading();
+      updatePrices();
     }
 
     function applyMode() {
       const isPractice = state.mode === "practice";
       $("liveModeBtn").classList.toggle("active", !isPractice);
       $("practiceModeBtn").classList.toggle("active", isPractice);
-      $("marketStatus").textContent = isPractice ? "Practice Mode" : "Live View";
+      const delay = state.priceMeta[state.selected]?.delayMinutes;
+      const liveSuffix = delay ? ` (${typeof delay === "number" ? `${delay}m delay` : delay})` : "";
+      $("marketStatus").textContent = isPractice ? "Practice: Simulated" : `${state.dataStatus === "live" ? "Live" : "Live fallback"}${liveSuffix}`;
+      $("marketStatus").title = `${state.priceSource}. Updated: ${formatDateTime(state.priceUpdatedAt)}. ${state.priceMessage}`;
 
       ["tradeSymbol", "tradeSide", "tradeQty"].forEach((id) => {
         $(id).disabled = !isPractice;
@@ -1467,7 +1485,7 @@
       $("orderTicket").classList.toggle("is-disabled", !isPractice);
       $("modeNote").textContent = isPractice
         ? "Practice Mode uses simulated prices for learning. Buy/sell orders use virtual money only."
-        : "Live View is read-only. Practice buying, selling, and reset controls are frozen in this mode.";
+        : `${state.priceSource}. Updated: ${formatDateTime(state.priceUpdatedAt)}. Live View is read-only; practice controls are frozen.`;
       updateOrderPreview();
     }
 
