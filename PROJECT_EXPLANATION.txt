@@ -74,8 +74,8 @@ In Practice Mode:
 
 In Live View:
 
-- The frontend calls /api/prices?mode=live.
-- app.py tries to fetch delayed NSE quote data from the internet.
+- The frontend calls /api/prices?mode=live&symbol=SELECTED_SYMBOL.
+- app.py fetches only the selected stock to save API credits.
 - The response includes price source, last updated time, delay metadata, and provider message.
 - Practice trading controls stay disabled.
 
@@ -90,7 +90,7 @@ In Practice Mode, it fetches:
 
 In Live View, it fetches:
 
-  /api/prices?mode=live
+  /api/prices?mode=live&symbol=INFY
 
 Then it updates:
 
@@ -185,13 +185,16 @@ Returns simulated prices from the local backend.
 
 Live route:
 
-  /api/prices?mode=live
+  /api/prices?mode=live&symbol=INFY
 
 Attempts providers in this order:
 
 1. Twelve Data, if TWELVE_DATA_API_KEY exists
 2. Yahoo Finance delayed quotes as fallback
 3. Local cached/simulated prices as transparent fallback
+
+Live View intentionally fetches only the selected stock.
+This protects free API limits and avoids wasting credits on symbols the user is not currently inspecting.
 
 Yahoo fallback symbols:
 
@@ -218,6 +221,14 @@ The live response includes:
 - per-symbol metadata such as delay, exchange, and market state
 
 If live fetching fails, the route returns a transparent fallback message.
+
+The backend caches selected live symbol responses for a short time:
+
+- Twelve Data live responses: 120 seconds
+- Yahoo fallback responses: 60 seconds
+- Provider error/fallback responses: 60 seconds
+
+This reduces repeated API calls when the user refreshes or switches around quickly.
 
 On Render, add this environment variable to enable Twelve Data:
 
@@ -474,8 +485,9 @@ Backend flow:
       -> prices.json
 
   live view
-      -> /api/prices?mode=live
-      -> internet quote provider
+      -> /api/prices?mode=live&symbol=selected
+      -> Twelve Data for selected stock
+      -> Yahoo fallback if needed
       -> source/delay metadata
       -> frontend UI
 

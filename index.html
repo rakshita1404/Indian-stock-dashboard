@@ -1086,11 +1086,12 @@
       if ($("tradeSymbol")) $("tradeSymbol").value = symbol;
       if (state.newsFilter === "selected" && $("refreshNews")) fetchNews();
       render();
+      if (state.mode === "live") updatePrices();
     }
 
     async function updatePrices() {
       try {
-        const response = await fetch(`/api/prices?mode=${state.mode}&ts=${Date.now()}`, { cache: "no-store" });
+        const response = await fetch(`/api/prices?mode=${state.mode}&symbol=${encodeURIComponent(state.selected)}&ts=${Date.now()}`, { cache: "no-store" });
         if (!response.ok) throw new Error("Unable to fetch prices");
         const data = await response.json();
         state.dataStatus = data.status || (state.mode === "live" ? "live" : "simulated");
@@ -1474,7 +1475,8 @@
       $("practiceModeBtn").classList.toggle("active", isPractice);
       const delay = state.priceMeta[state.selected]?.delayMinutes;
       const liveSuffix = delay ? ` (${typeof delay === "number" ? `${delay}m delay` : delay})` : "";
-      $("marketStatus").textContent = isPractice ? "Practice: Simulated" : `${state.dataStatus === "live" ? "Live" : "Live fallback"}${liveSuffix}`;
+      const statusText = state.dataStatus === "live" ? "Live" : "Live fallback";
+      $("marketStatus").textContent = isPractice ? "Practice: Simulated" : `${statusText}: ${state.selected}${liveSuffix}`;
       $("marketStatus").title = `${state.priceSource}. Updated: ${formatDateTime(state.priceUpdatedAt)}. ${state.priceMessage}`;
 
       ["tradeSymbol", "tradeSide", "tradeQty"].forEach((id) => {

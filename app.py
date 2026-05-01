@@ -36,7 +36,7 @@ PRICE_FILE = Path("prices.json")
 API_KEY = os.getenv("FINNHUB_API_KEY", "").strip()
 GNEWS_API_KEY = os.getenv("GNEWS_API_KEY", "").strip()
 TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "").strip()
-live_price_cache = {"expires_at": 0, "payload": None}
+live_price_cache = {}
 prices = {
     "RELIANCE": 2935.40,
     "TCS": 3820.25,
@@ -136,69 +136,77 @@ def as_float(value):
         return None
 
 
-def fetch_twelve_data_prices():
+def live_fallback_payload(symbol, message):
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    return {
+        "mode": "live",
+        "status": "fallback",
+        "source": "Cached simulator prices",
+        "lastUpdated": now,
+        "message": message,
+        "prices": {symbol: prices.get(symbol, 0)},
+        "meta": {
+            symbol: {
+                "providerSymbol": symbol,
+                "currency": "INR",
+                "isSimulated": True,
+                "error": message,
+            }
+        },
+    }
+
+
+def fetch_twelve_data_price(symbol):
+    provider_symbol = TWELVE_SYMBOLS.get(symbol)
+    if not provider_symbol:
+        return None
+
     live_prices = {}
     meta = {}
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
-    for symbol, provider_symbol in TWELVE_SYMBOLS.items():
-        url = (
-            "https://api.twelvedata.com/quote"
-            f"?symbol={quote(provider_symbol)}&apikey={quote(TWELVE_DATA_API_KEY)}"
+    url = (
+        "https://api.twelvedata.com/quote"
+        f"?symbol={quote(provider_symbol)}&apikey={quote(TWELVE_DATA_API_KEY)}"
+    )
+    request = Request(
+        url,
+        headers={
+            "User-Agent": "StockDesk/1.0",
+            "Accept": "application/json",
+        },
+    )
+
+    try:
+        with urlopen(request, timeout=10) as response:
+            quote_payload = json.loads(response.read().decode("utf-8"))
+    except (URLError, TimeoutError, json.JSONDecodeError) as exc:
+        return live_fallback_payload(symbol, f"Twelve Data request failed. Showing fallback price. Reason: {exc}")
+
+    if quote_payload.get("status") == "error":
+        return live_fallback_payload(
+            symbol,
+            quote_payload.get("message", "Twelve Data returned an error. Showing fallback price."),
         )
-        request = Request(
-            url,
-            headers={
-                "User-Agent": "StockDesk/1.0",
-                "Accept": "application/json",
-            },
-        )
 
-        try:
-            with urlopen(request, timeout=10) as response:
-                quote_payload = json.loads(response.read().decode("utf-8"))
-        except (URLError, TimeoutError, json.JSONDecodeError) as exc:
-            meta[symbol] = {
-                "providerSymbol": provider_symbol,
-                "isSimulated": False,
-                "error": str(exc),
-            }
-            continue
+    price = as_float(quote_payload.get("close")) or as_float(quote_payload.get("price"))
+    if price is None:
+        return live_fallback_payload(symbol, "Twelve Data response did not include a usable price. Showing fallback price.")
 
-        if quote_payload.get("status") == "error":
-            meta[symbol] = {
-                "providerSymbol": provider_symbol,
-                "isSimulated": False,
-                "error": quote_payload.get("message", "Twelve Data returned an error."),
-            }
-            continue
-
-        price = as_float(quote_payload.get("close")) or as_float(quote_payload.get("price"))
-        if price is None:
-            meta[symbol] = {
-                "providerSymbol": provider_symbol,
-                "isSimulated": False,
-                "error": "Twelve Data response did not include a usable price.",
-            }
-            continue
-
-        live_prices[symbol] = round(price, 2)
-        prices[symbol] = live_prices[symbol]
-        meta[symbol] = {
-            "providerSymbol": provider_symbol,
-            "currency": quote_payload.get("currency", "INR"),
-            "change": as_float(quote_payload.get("change")),
-            "changePercent": as_float(quote_payload.get("percent_change")),
-            "marketState": "OPEN" if quote_payload.get("is_market_open") else "CLOSED",
-            "exchange": quote_payload.get("exchange", "NSE"),
-            "delayMinutes": "EOD/delayed",
-            "marketTime": quote_payload.get("timestamp"),
-            "datetime": quote_payload.get("datetime"),
-            "isSimulated": False,
-        }
-
-    if not live_prices:
-        return None
+    live_prices[symbol] = round(price, 2)
+    prices[symbol] = live_prices[symbol]
+    meta[symbol] = {
+        "providerSymbol": provider_symbol,
+        "currency": quote_payload.get("currency", "INR"),
+        "change": as_float(quote_payload.get("change")),
+        "changePercent": as_float(quote_payload.get("percent_change")),
+        "marketState": "OPEN" if quote_payload.get("is_market_open") else "CLOSED",
+        "exchange": quote_payload.get("exchange", "NSE"),
+        "delayMinutes": "EOD/delayed",
+        "marketTime": quote_payload.get("timestamp"),
+        "datetime": quote_payload.get("datetime"),
+        "isSimulated": False,
+    }
 
     save_prices()
     return {
@@ -206,19 +214,18 @@ def fetch_twelve_data_prices():
         "status": "live",
         "source": "Twelve Data NSE quotes",
         "lastUpdated": now,
-        "message": "Live View uses Twelve Data where your plan supports NSE symbols. NSE data may be delayed or end-of-day depending on plan.",
+        "message": f"Fetched only {symbol} from Twelve Data to save API credits. NSE data may be delayed or end-of-day depending on plan.",
         "prices": live_prices,
         "meta": meta,
     }
 
 
-def fetch_yahoo_prices():
-    now = time.time()
-    if live_price_cache["payload"] and live_price_cache["expires_at"] > now:
-        return live_price_cache["payload"]
+def fetch_yahoo_price(symbol):
+    provider_symbol = YAHOO_SYMBOLS.get(symbol)
+    if not provider_symbol:
+        return live_fallback_payload(symbol, "No fallback provider symbol configured. Showing fallback price.")
 
-    yahoo_symbols = ",".join(YAHOO_SYMBOLS.values())
-    url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={quote(yahoo_symbols, safe=',')}"
+    url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={quote(provider_symbol)}"
     request = Request(
         url,
         headers={
@@ -231,12 +238,7 @@ def fetch_yahoo_prices():
         with urlopen(request, timeout=10) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except (URLError, TimeoutError, json.JSONDecodeError) as exc:
-        fallback = practice_prices_payload()
-        fallback["mode"] = "live"
-        fallback["status"] = "fallback"
-        fallback["source"] = "Cached simulator prices"
-        fallback["message"] = f"Live prices unavailable. Showing latest local prices. Reason: {exc}"
-        return fallback
+        return live_fallback_payload(symbol, f"Yahoo fallback unavailable. Showing fallback price. Reason: {exc}")
 
     reverse_symbols = {value: key for key, value in YAHOO_SYMBOLS.items()}
     live_prices = {}
@@ -266,12 +268,7 @@ def fetch_yahoo_prices():
         }
 
     if not live_prices:
-        fallback = practice_prices_payload()
-        fallback["mode"] = "live"
-        fallback["status"] = "fallback"
-        fallback["source"] = "Cached simulator prices"
-        fallback["message"] = "Live provider returned no quote data. Showing latest local prices."
-        return fallback
+        return live_fallback_payload(symbol, "Yahoo fallback returned no quote data. Showing fallback price.")
 
     save_prices()
     updated_at = (
@@ -284,28 +281,38 @@ def fetch_yahoo_prices():
         "status": "live",
         "source": "Yahoo Finance delayed quotes",
         "lastUpdated": updated_at,
-        "message": "Live View uses delayed NSE quote data when available. Trading remains disabled.",
+        "message": f"Fetched only {symbol} from Yahoo fallback. Trading remains disabled.",
         "prices": live_prices,
         "meta": meta,
     }
-    live_price_cache["payload"] = result
-    live_price_cache["expires_at"] = now + 60
     return result
 
 
-def fetch_live_prices():
+def fetch_live_prices(symbol):
+    symbol = symbol if symbol in SYMBOLS else "INFY"
+    cache_key = f"live:{symbol}"
     now = time.time()
-    if live_price_cache["payload"] and live_price_cache["expires_at"] > now:
-        return live_price_cache["payload"]
+    cached = live_price_cache.get(cache_key)
+    if cached and cached["expires_at"] > now:
+        return cached["payload"]
 
     if TWELVE_DATA_API_KEY:
-        twelve_payload = fetch_twelve_data_prices()
-        if twelve_payload:
-            live_price_cache["payload"] = twelve_payload
-            live_price_cache["expires_at"] = now + 120
-            return twelve_payload
+        payload = fetch_twelve_data_price(symbol)
+        if payload and payload["status"] == "live":
+            live_price_cache[cache_key] = {"payload": payload, "expires_at": now + 120}
+            return payload
+        if payload:
+            yahoo_payload = fetch_yahoo_price(symbol)
+            if yahoo_payload["status"] == "live":
+                yahoo_payload["message"] = f"Twelve Data did not return live data for {symbol}. Using Yahoo fallback to save Twelve credits."
+                live_price_cache[cache_key] = {"payload": yahoo_payload, "expires_at": now + 60}
+                return yahoo_payload
+            live_price_cache[cache_key] = {"payload": payload, "expires_at": now + 60}
+            return payload
 
-    return fetch_yahoo_prices()
+    payload = fetch_yahoo_price(symbol)
+    live_price_cache[cache_key] = {"payload": payload, "expires_at": now + 60}
+    return payload
 
 
 def fetch_gnews(symbol="all"):
@@ -368,7 +375,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/prices":
             query = parse_qs(parsed.query)
             mode = query.get("mode", ["practice"])[0].lower()
-            payload = fetch_live_prices() if mode == "live" else practice_prices_payload()
+            symbol = query.get("symbol", ["INFY"])[0].upper()
+            payload = fetch_live_prices(symbol) if mode == "live" else practice_prices_payload()
             json_response(self, payload)
             return
 
